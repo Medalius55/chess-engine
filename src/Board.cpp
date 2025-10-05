@@ -146,36 +146,38 @@ std::unique_ptr<Piece> Board::makePieceFromFen(char c) {
 bool Board::wouldBeLegal(const Move& m) const {
     Board& self = const_cast<Board&>(*this);
 
-    // use `self` everywhere you previously used `*this`
     Piece* src = self.pieceAt(m.from.rank, m.from.file);
     if (!src || (self.whiteToMove != src->isWhite())) return false;
 
-    // ensure pseudo-legal
-    bool ok = false;
-    for (auto& cand : src->generateMoves(self, m.from)) {
-        if (cand.to.file == m.to.file && cand.to.rank == m.to.rank &&
-            cand.isCastleKing == m.isCastleKing &&
-            cand.isCastleQueen == m.isCastleQueen &&
-            cand.isEnPassant   == m.isEnPassant) { ok = true; break; }
+    // Find the generated move that lands on the same destination (adopt its flags)
+    const Move* chosen = nullptr;
+    auto list = src->generateMoves(self, m.from);
+    for (auto& cand : list) {
+        if (cand.to.file == m.to.file && cand.to.rank == m.to.rank) {
+            chosen = &cand;
+            break;
+        }
     }
-    if (!ok) return false;
+    if (!chosen) return false;
 
-    // simulate without promotion
-    auto sim = simulate(self, m, /*applyPromotion*/false);
+    // Simulate using the *candidate* (has proper flags like EP/castle)
+    auto sim = simulate(self, *chosen, /*applyPromotion*/false);
 
-    // castle-through-check probe and king-safety checks
     bool illegal = false;
-    if (m.isCastleKing || m.isCastleQueen) {
-        int dir = m.isCastleKing ? +1 : -1;
-        Square s0 = m.from;
-        Square s1{ m.from.file + dir, m.from.rank };
-        Square s2 = m.to;
+
+    // For castling: start, through, dest must not be attacked
+    if (chosen->isCastleKing || chosen->isCastleQueen) {
+        int dir = chosen->isCastleKing ? +1 : -1;
+        Square s0 = chosen->from;
+        Square s1{ chosen->from.file + dir, chosen->from.rank };
+        Square s2 = chosen->to;
         if (IsSquareAttacked(self, s0, !self.whiteToMove) ||
             IsSquareAttacked(self, s1, !self.whiteToMove) ||
             IsSquareAttacked(self, s2, !self.whiteToMove)) {
             illegal = true;
         }
     }
+
     if (!illegal) {
         auto k = findKing(self, self.whiteToMove);
         illegal = (!k.has_value() || IsSquareAttacked(self, *k, !self.whiteToMove));
@@ -189,14 +191,11 @@ bool Board::tryMakeMove(const Move& m) {
     Piece* src = pieceAt(m.from.rank, m.from.file);
     if (!src || (whiteToMove != src->isWhite())) return false;
 
-    // verify the target is in the pseudo-legal list and capture special flags
+    // Match by destination only; then adopt the candidate’s flags
     const Move* chosen = nullptr;
     auto list = src->generateMoves(*this, m.from);
     for (auto& cand : list) {
-        if (cand.to.file==m.to.file && cand.to.rank==m.to.rank &&
-            cand.isCastleKing == m.isCastleKing &&
-            cand.isCastleQueen == m.isCastleQueen &&
-            cand.isEnPassant == m.isEnPassant) {
+        if (cand.to.file == m.to.file && cand.to.rank == m.to.rank) {
             chosen = &cand;
             break;
         }
@@ -205,9 +204,8 @@ bool Board::tryMakeMove(const Move& m) {
 
     if (!wouldBeLegal(*chosen)) return false;
 
-    // apply for real (with promotion)
     auto sim = simulate(*this, *chosen, /*applyPromotion*/true);
-    (void)sim; // not undone
+    (void)sim;
     whiteToMove = !whiteToMove;
     return true;
 }
