@@ -27,20 +27,26 @@ void DrawBoard(const Config& cfg, const Layout& L) {
 }
 
 void DrawOverlays(const Config& cfg, const Layout& L, const Board& b) {
-    if (!b.selected) return;
-    int sx = L.boardX + b.selected->file * L.tile;
-    int sy = L.boardY + (7 - b.selected->rank) * L.tile;
-    DrawRectangle(sx, sy, L.tile, L.tile, cfg.theme.select);
+    // Selected square highlight
+    if (b.selected) {
+        int sx = L.boardX + b.selected->file * L.tile;
+        int sy = L.boardY + (7 - b.selected->rank) * L.tile;
+        DrawRectangle(sx, sy, L.tile, L.tile, cfg.theme.select);
+    }
 
-    const int dx[4] = { 1, -1, 0,  0};
-    const int dy[4] = { 0,  0, 1, -1};
-    for (int i = 0; i < 4; ++i) {
-        int nf = b.selected->file + dx[i];
-        int nr = b.selected->rank + dy[i];
-        if (nf >= 0 && nf < 8 && nr >= 0 && nr < 8) {
-            int cx = L.boardX + nf * L.tile + L.tile / 2;
-            int cy = L.boardY + (7 - nr) * L.tile + L.tile / 2;
-            DrawCircle(cx, cy, L.tile * 0.12f, cfg.theme.hint);
+    // Real target markers for the selected piece
+    for (const auto& to : b.legalTargets) {
+        int cx = L.boardX + to.file * L.tile + L.tile / 2;
+        int cy = L.boardY + (7 - to.rank) * L.tile + L.tile / 2;
+
+        // Draw a filled dot for quiet moves
+        DrawCircle(cx, cy, L.tile * 0.14f, cfg.theme.hint);
+
+        // If there's an enemy piece on the target, draw a ring to indicate capture
+        char dst = b.charAt(to.rank, to.file);
+        if (dst != '.') {
+            // ring: a slightly larger circle outline
+            DrawCircleLines(cx, cy, L.tile * 0.20f, cfg.theme.hint);
         }
     }
 }
@@ -130,7 +136,7 @@ void DrawPieces(const Config& cfg, const Layout& L, const Board& b) {
     (void)cfg;
     for (int r = 0; r < 8; ++r) {
         for (int f = 0; f < 8; ++f) {
-            char p = b.squares[r][f];
+            char p = b.charAt(r, f);
             if (p == '.') continue;
 
             int x = L.boardX + f * L.tile;

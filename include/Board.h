@@ -1,13 +1,36 @@
 #pragma once
 #include <array>
+#include <memory>
 #include <optional>
+#include <vector>
+#include "Piece.h"
 
-struct Square { int file{0}; int rank{0}; }; // 0..7
+class Piece; // fwd
 
-using BoardArray = std::array<std::array<char,8>,8>;
+using BoardGrid = std::array<std::array<std::unique_ptr<Piece>,8>,8>;
 
 struct Board {
-    BoardArray squares{};
+    BoardGrid grid{};
     std::optional<Square> selected{};
+    bool whiteToMove = true;
+
+    std::vector<Square> legalTargets;
+
     Board();
+
+    // Access
+    const Piece* pieceAt(int rank, int file) const { return grid[rank][file].get(); }
+    Piece*       pieceAt(int rank, int file)       { return grid[rank][file].get(); }
+
+    // Return printable symbol for renderer/sprites: uppercase white, lowercase black, or '.'
+    char charAt(int rank, int file) const {
+        auto p = pieceAt(rank, file);
+        return p ? p->symbol() : '.';
+    }
+
+    // Move application (pseudo-legal gate only)
+    bool tryMakeMove(const Move& m);
+
+    // Factory to create a piece from FEN char
+    static std::unique_ptr<Piece> makePieceFromFen(char c);
 };

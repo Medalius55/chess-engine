@@ -1,22 +1,65 @@
 #include "Input.h"
+#include "Board.h"
+#include "Piece.h"
 
 std::optional<Square> MouseToSquare(const Layout& L, Vector2 m) {
-    int x = static_cast<int>(m.x) - L.boardX;
-    int y = static_cast<int>(m.y) - L.boardY;
-
+    int x = (int)m.x - L.boardX;
+    int y = (int)m.y - L.boardY;
     if (x < 0 || y < 0) return std::nullopt;
     if (x >= 8 * L.tile || y >= 8 * L.tile) return std::nullopt;
-
     return Square{ x / L.tile, 7 - (y / L.tile) };
 }
+
+static inline bool isWhiteChar(char s){ return s>='A'&&s<='Z'; }
+static inline bool isBlackChar(char s){ return s>='a'&&s<='z'; }
 
 void HandleClick(Board& board, const Layout& L, Vector2 mouse) {
     auto sq = MouseToSquare(L, mouse);
     if (!sq) return;
-    if (board.selected && board.selected->file == sq->file 
-        && board.selected->rank == sq->rank) {
-        board.selected.reset();
-    } else {
+
+    // If nothing is selected yet: select a friendly piece and compute its moves
+    if (!board.selected) {
+        char sym = board.charAt(sq->rank, sq->file);
+        if (sym == '.') return;
+        if (board.whiteToMove && !isWhiteChar(sym)) return;
+        if (!board.whiteToMove && !isBlackChar(sym)) return;
+
         board.selected = *sq;
+
+        // NEW: compute pseudo-legal targets for this piece
+        board.legalTargets.clear();
+        if (auto p = board.pieceAt(sq->rank, sq->file)) {
+            auto moves = p->generateMoves(board, *sq);
+            board.legalTargets.reserve(moves.size());
+            for (auto& m : moves) board.legalTargets.push_back(m.to);
+        }
+        return;
+    }
+
+    // Clicking the same square: deselect and clear targets
+    if (board.selected->file == sq->file && board.selected->rank == sq->rank) {
+        board.selected.reset();
+        board.legalTargets.clear();  
+        return;
+    }
+
+    // Try to make a move from selected -> clicked
+    Move m{ *board.selected, *sq, 0 };
+    if (board.tryMakeMove(m)) {
+        board.selected.reset();
+        board.legalTargets.clear();
+        return;
+    }
+
+    // If illegal: if clicked friendly piece, switch selection and recompute targets
+    char sym = board.charAt(sq->rank, sq->file);
+    if ((board.whiteToMove && isWhiteChar(sym)) || (!board.whiteToMove && isBlackChar(sym))) {
+        board.selected = *sq;
+        board.legalTargets.clear();
+        if (auto p = board.pieceAt(sq->rank, sq->file)) {
+            auto moves = p->generateMoves(board, *sq);
+            board.legalTargets.reserve(moves.size());
+            for (auto& mm : moves) board.legalTargets.push_back(mm.to);
+        }
     }
 }
