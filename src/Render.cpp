@@ -32,19 +32,48 @@ void DrawBoard(const Config& cfg, const Layout& L) {
 
 // ----- overlays (selection + legal targets) -----
 void DrawOverlays(const Config& cfg, const Layout& L, const Board& b) {
+    // Last move highlight
+    if (b.lastFrom && b.lastTo) {
+        auto drawHL = [&](Square s, Color c){
+            int x = L.boardX + s.file * L.tile;
+            int y = L.boardY + (7 - s.rank) * L.tile;
+            DrawRectangle(x, y, L.tile, L.tile, c);
+        };
+        Color lastA = Color{ 60, 180, 255, 90 };
+        Color lastB = Color{ 60, 180, 255, 60 };
+        drawHL(*b.lastFrom, lastA);
+        drawHL(*b.lastTo,   lastB);
+    }
+
+    // Selected square highlight
     if (b.selected) {
         int sx = L.boardX + b.selected->file * L.tile;
         int sy = L.boardY + (7 - b.selected->rank) * L.tile;
         DrawRectangle(sx, sy, L.tile, L.tile, cfg.theme.select);
     }
 
+    // Legal targets
     for (const auto& to : b.legalTargets) {
         int cx = L.boardX + to.file * L.tile + L.tile / 2;
         int cy = L.boardY + (7 - to.rank) * L.tile + L.tile / 2;
-
         DrawCircle(cx, cy, L.tile * 0.14f, cfg.theme.hint);
         if (b.charAt(to.rank, to.file) != '.') {
             DrawCircleLines(cx, cy, L.tile * 0.22f, cfg.theme.hint);
+        }
+    }
+
+    // In-check king highlight (current side)
+    bool side = b.whiteToMove;
+    char king = side ? 'K' : 'k';
+    for (int r = 0; r < 8; ++r) for (int f = 0; f < 8; ++f) {
+        if (b.charAt(r,f) == king) {
+            // ask board if this king is attacked
+            if (b.inCheck(side)) {
+                int x = L.boardX + f * L.tile;
+                int y = L.boardY + (7 - r) * L.tile;
+                DrawRectangle(x, y, L.tile, L.tile, Color{220,40,40,90});
+            }
+            r = 8; break;
         }
     }
 }
@@ -158,4 +187,50 @@ void DrawStatus(const Config& cfg, const Layout& L, const Board& b) {
 
     DrawText(s.c_str(), tx+1, ty+1, fontSize, Color{0,0,0,140});
     DrawText(s.c_str(), tx,   ty,   fontSize, RAYWHITE);
+}
+
+HudButtons ComputeHudButtons(const Layout& L) {
+    // Status bar geometry must match DrawStatus()
+    const int boardW = 8 * L.tile;
+    const int barH   = std::max(22, L.tile / 2);
+    const int margin = 8;
+    const int x      = L.boardX;
+    const int y      = L.boardY + 8 * L.tile + margin;
+
+    // Buttons live on the right side of the bar
+    const int pad  = 6;
+    const int bw   = std::max(30, L.tile / 2);   // button width
+    const int bh   = barH - pad*2;               // button height
+    const int gap  = 6;
+
+    Rectangle redo = { (float)(x + boardW - pad - bw), (float)(y + pad), (float)bw, (float)bh };
+    Rectangle undo = { redo.x - gap - bw,               (float)(y + pad), (float)bw, (float)bh };
+    return HudButtons{ undo, redo };
+}
+
+static void DrawButton(Rectangle r, const char* label, bool enabled) {
+    Color bg = enabled ? Color{60, 60, 60, 200} : Color{120, 120, 120, 120};
+    Color fg = RAYWHITE;
+    DrawRectangleRec(r, bg);
+    DrawRectangleLinesEx(r, 1.0f, Color{255,255,255,60});
+    int fs = std::max(12, (int)(r.height * 0.6f));
+    int tw = MeasureText(label, fs);
+    int tx = (int)(r.x + (r.width - tw)/2);
+    int ty = (int)(r.y + (r.height - fs)/2);
+    DrawText(label, tx, ty, fs, fg);
+}
+
+void DrawHudButtons(const Config& /*cfg*/, const Layout& L, const Board& b, const HudButtons& hb) {
+    // Enabled states — requires historyIndex/size to be in Board (as you added)
+    bool canUndo = (b.historyIndex > 0);
+    bool canRedo = (b.historyIndex < b.history.size());
+
+    // Slight drop shadow so they sit nicely on the status bar
+    Rectangle shadowU = hb.undo;  shadowU.x += 1; shadowU.y += 1;
+    Rectangle shadowR = hb.redo;  shadowR.x += 1; shadowR.y += 1;
+    DrawRectangleRec(shadowU, Color{0,0,0,40});
+    DrawRectangleRec(shadowR, Color{0,0,0,40});
+
+    DrawButton(hb.undo, "Undo", canUndo);
+    DrawButton(hb.redo, "Redo", canRedo);
 }

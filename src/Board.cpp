@@ -191,21 +191,58 @@ bool Board::tryMakeMove(const Move& m) {
     Piece* src = pieceAt(m.from.rank, m.from.file);
     if (!src || (whiteToMove != src->isWhite())) return false;
 
-    // Match by destination only; then adopt the candidate’s flags
+    // Match by destination only; adopt candidate flags (castle/EP/promotion)
     const Move* chosen = nullptr;
     auto list = src->generateMoves(*this, m.from);
     for (auto& cand : list) {
-        if (cand.to.file == m.to.file && cand.to.rank == m.to.rank) {
+        if (cand.to.file==m.to.file && cand.to.rank==m.to.rank) {
             chosen = &cand;
             break;
         }
     }
     if (!chosen) return false;
 
-    if (!wouldBeLegal(*chosen)) return false;
+    // If caller provided a promotion choice, prefer it
+    Move applyMove = *chosen;
+    if (m.promotion) applyMove.promotion = m.promotion;
 
-    auto sim = simulate(*this, *chosen, /*applyPromotion*/true);
+    if (!wouldBeLegal(applyMove)) return false;
+
+    // --- build history record (value semantics) ---
+    HistoryRec h{};
+    h.m = applyMove;
+    h.prevWhiteToMove = whiteToMove;
+    h.prevWK = canCastleWK; h.prevWQ = canCastleWQ;
+    h.prevBK = canCastleBK; h.prevBQ = canCastleBQ;
+    h.prevEP = enPassantTarget;
+    h.movedBefore = charAt(m.from.rank, m.from.file);
+    h.toBefore    = charAt(m.to.rank,   m.to.file);
+
+    // EP capture snapshot (if this will be EP)
+    if (applyMove.isEnPassant) {
+        int dir = std::isupper((unsigned char)h.movedBefore) ? +1 : -1;
+        int capRank = m.to.rank - dir;
+        h.epCapFile = m.to.file; h.epCapRank = capRank;
+        h.epCaptured = charAt(capRank, m.to.file); // should be 'p'/'P'
+    }
+
+    // --- NEW: remove any redo tail if we’ve undone moves ---
+    if (historyIndex < history.size())
+        history.resize(historyIndex);
+
+    // --- apply for real (with promotion) ---
+    auto sim = simulate(*this, applyMove, /*applyPromotion*/true);
     (void)sim;
+
+    // Update last-move markers
+    lastFrom = m.from;
+    lastTo   = m.to;
+
+    // Push history and advance cursor
+    history.push_back(std::move(h));
+    historyIndex = history.size();
+
+    // Flip side
     whiteToMove = !whiteToMove;
     return true;
 }
@@ -244,4 +281,65 @@ std::string Board::statusString() const {
     if (any) return side ? "White to move" : "Black to move";
     if (check) return side ? "Checkmate - Black wins" : "Checkmate - White wins";
     return "Stalemate";
+}
+
+bool Board::undo() {
+    if (historyIndex == 0) return false;
+    historyIndex--;
+
+    const HistoryRec& h = history[historyIndex];
+
+    // Restore global flags first
+    whiteToMove     = h.prevWhiteToMove;
+    canCastleWK     = h.prevWK; canCastleWQ = h.prevWQ;
+    canCastleBK     = h.prevBK; canCastleBQ = h.prevBQ;
+    enPassantTarget = h.prevEP;
+
+    // Clear from/to squares
+    grid[h.m.from.rank][h.m.from.file].reset();
+    grid[h.m.to.rank][h.m.to.file].reset();
+
+    // Restore destination pre-move occupant
+    if (h.toBefore != '.' && h.toBefore != 0)
+        grid[h.m.to.rank][h.m.to.file] = Board::makePieceFromFen(h.toBefore);
+
+    // Restore origin pre-move occupant
+    if (h.movedBefore != '.' && h.movedBefore != 0)
+        grid[h.m.from.rank][h.m.from.file] = Board::makePieceFromFen(h.movedBefore);
+
+    // If EP happened, put captured pawn back
+    if (h.epCaptured)
+        grid[h.epCapRank][h.epCapFile] = Board::makePieceFromFen(h.epCaptured);
+
+    // If castling, move rook back
+    if (h.m.isCastleKing || h.m.isCastleQueen) {
+        int rank = h.m.from.rank;
+        int fromF = h.m.isCastleKing ? 7 : 0;
+        int toF   = h.m.isCastleKing ? 5 : 3;
+        auto& rookMovedCell = grid[rank][toF];
+        if (rookMovedCell) {
+            bool white = std::isupper((unsigned char)h.movedBefore) != 0;
+            grid[rank][fromF] = Board::makePieceFromFen(white ? 'R' : 'r');
+            rookMovedCell.reset();
+        }
+    }
+
+    lastFrom = h.m.to; lastTo = h.m.from;
+    return true;
+}
+
+bool Board::redo() {
+    if (historyIndex >= history.size()) return false;
+    const HistoryRec& h = history[historyIndex];
+
+    // Reapply the move exactly as recorded
+    auto sim = simulate(*this, h.m, true);
+    (void) sim;
+
+    lastFrom = h.m.from;
+    lastTo = h.m.to;
+
+    whiteToMove = !h.prevWhiteToMove;
+    historyIndex++;
+    return true;
 }

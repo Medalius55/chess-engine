@@ -3,6 +3,15 @@
 #include "Layout.h"
 #include "Board.h"
 
+struct HudButtons {
+    Rectangle undo;
+    Rectangle redo;
+};
+
+HudButtons ComputeHudButtons(const Layout& L);
+
+void DrawHudButtons(const Config& cfg, const Layout& L, const Board& b, const HudButtons& hb);
+
 struct Sprite;
 
 Color PieceFill(char p);

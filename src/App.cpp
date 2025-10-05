@@ -16,8 +16,24 @@ bool App::running() const {
 }
 
 void App::pollInput(Board& b) {
+    // Hotkeys
+    if (IsKeyPressed(KEY_Z)) { if (b.undo()) { b.selected.reset(); b.legalTargets.clear(); } }
+    if (IsKeyPressed(KEY_X)) { if (b.redo()) { b.selected.reset(); b.legalTargets.clear(); } }
+
+    // Mouse clicks on HUD buttons
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        HandleClick(b, layout, GetMousePosition());
+        Vector2 m = GetMousePosition();
+        HudButtons hb = ComputeHudButtons(layout);
+        if (CheckCollisionPointRec(m, hb.undo)) {
+            if (b.undo()) { b.selected.reset(); b.legalTargets.clear(); }
+            return; // consume click
+        }
+        if (CheckCollisionPointRec(m, hb.redo)) {
+            if (b.redo()) { b.selected.reset(); b.legalTargets.clear(); }
+            return; // consume click
+        }
+        // Otherwise, pass through to board click
+        HandleClick(b, layout, m);
     }
 }
 
@@ -28,11 +44,12 @@ void App::render(const Board& b) const {
     ClearBackground(RAYWHITE);
 
     DrawBoard(cfg, layout);
-    DrawOverlays(cfg, layout, b);
     DrawPieces(cfg, layout, b);
+    DrawOverlays(cfg, layout, b);
     DrawCoords(cfg, layout);
 
     DrawStatus(cfg, layout, b);
+    DrawHudButtons(cfg, layout, b, ComputeHudButtons(layout));
 }
 
 void App::shutdown() {

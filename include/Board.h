@@ -9,16 +9,32 @@ class Piece; // fwd
 
 using BoardGrid = std::array<std::array<std::unique_ptr<Piece>,8>,8>;
 
+struct HistoryRec {
+    Move m{};
+    char movedBefore{0};
+    char toBefore{0};
+    char epCaptured{0};
+    int epCapFile{-1}, epCapRank{-1};
+    bool prevWK{}, prevWQ{}, prevBK{}, prevBQ{};
+    std::optional<Square> prevEP{};
+    bool prevWhiteToMove{true};
+};
+
 struct Board {
     BoardGrid grid{};
     std::optional<Square> selected{};
     bool whiteToMove = true;
 
     std::vector<Square> legalTargets;
+    std::optional<Square> lastFrom{};
+    std::optional<Square> lastTo{};
 
     bool canCastleWK = true, canCastleWQ = true;
     bool canCastleBK = true, canCastleBQ = true;
     std::optional<Square> enPassantTarget;
+
+    std::vector<HistoryRec> history;
+    size_t historyIndex = 0;
 
     Board();
 
@@ -43,4 +59,7 @@ struct Board {
     bool inCheck(bool white) const;
     bool anyLegalMoves() const;
     std::string statusString() const;
+
+    bool undo();
+    bool redo();
 };
