@@ -26,12 +26,15 @@ void HandleClick(Board& board, const Layout& L, Vector2 mouse) {
 
         board.selected = *sq;
 
-        // NEW: compute pseudo-legal targets for this piece
+       // After: board.selected = *sq;
         board.legalTargets.clear();
         if (auto p = board.pieceAt(sq->rank, sq->file)) {
-            auto moves = p->generateMoves(board, *sq);
-            board.legalTargets.reserve(moves.size());
-            for (auto& m : moves) board.legalTargets.push_back(m.to);
+            auto moves = p->generateMoves(board, *sq);       // pseudo-legal
+            for (auto& mv : moves) {
+                if (board.wouldBeLegal(mv)) {                // filter by king safety
+                    board.legalTargets.push_back(mv.to);
+                }
+            }
         }
         return;
     }
@@ -58,8 +61,7 @@ void HandleClick(Board& board, const Layout& L, Vector2 mouse) {
         board.legalTargets.clear();
         if (auto p = board.pieceAt(sq->rank, sq->file)) {
             auto moves = p->generateMoves(board, *sq);
-            board.legalTargets.reserve(moves.size());
-            for (auto& mm : moves) board.legalTargets.push_back(mm.to);
+            for (auto& mv : moves) if (board.wouldBeLegal(mv)) board.legalTargets.push_back(mv.to);
         }
     }
 }

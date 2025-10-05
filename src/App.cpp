@@ -26,11 +26,13 @@ void App::endFrame()   const { EndDrawing(); }
 
 void App::render(const Board& b) const {
     ClearBackground(RAYWHITE);
-    DrawText("Pixel-art pieces (procedural)", 10, 10, cfg.uiFontSize, cfg.theme.text);
+
     DrawBoard(cfg, layout);
     DrawOverlays(cfg, layout, b);
     DrawPieces(cfg, layout, b);
     DrawCoords(cfg, layout);
+
+    DrawStatus(cfg, layout, b);
 }
 
 void App::shutdown() {

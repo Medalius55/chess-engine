@@ -8,6 +8,10 @@ struct Move {
     Square from{};
     Square to{};
     char promotion{0};
+
+    bool isCastleKing  = false;
+    bool isCastleQueen = false;
+    bool isEnPassant   = false;
 };
 
 class Piece {

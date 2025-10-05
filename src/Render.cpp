@@ -1,10 +1,13 @@
 #include "Render.h"
 #include "Sprites.h"
+#include "Board.h"
 #include <raylib.h>
 #include <string>
 #include <cstdio>
 #include <cctype>
+#include <algorithm>
 
+// ----- piece palette helpers -----
 Color PieceFill(char p) {
     bool white = std::isupper(static_cast<unsigned char>(p)) != 0;
     return white ? Color{250,250,250,255} : Color{20,20,20,255};
@@ -15,6 +18,7 @@ Color PieceOutline(char p, bool darkSquare) {
     return darkSquare ? Color{255,255,255,160} : Color{0,0,0,160};
 }
 
+// ----- board -----
 void DrawBoard(const Config& cfg, const Layout& L) {
     for (int r = 0; r < 8; ++r) {
         for (int f = 0; f < 8; ++f) {
@@ -26,31 +30,26 @@ void DrawBoard(const Config& cfg, const Layout& L) {
     }
 }
 
+// ----- overlays (selection + legal targets) -----
 void DrawOverlays(const Config& cfg, const Layout& L, const Board& b) {
-    // Selected square highlight
     if (b.selected) {
         int sx = L.boardX + b.selected->file * L.tile;
         int sy = L.boardY + (7 - b.selected->rank) * L.tile;
         DrawRectangle(sx, sy, L.tile, L.tile, cfg.theme.select);
     }
 
-    // Real target markers for the selected piece
     for (const auto& to : b.legalTargets) {
         int cx = L.boardX + to.file * L.tile + L.tile / 2;
         int cy = L.boardY + (7 - to.rank) * L.tile + L.tile / 2;
 
-        // Draw a filled dot for quiet moves
         DrawCircle(cx, cy, L.tile * 0.14f, cfg.theme.hint);
-
-        // If there's an enemy piece on the target, draw a ring to indicate capture
-        char dst = b.charAt(to.rank, to.file);
-        if (dst != '.') {
-            // ring: a slightly larger circle outline
-            DrawCircleLines(cx, cy, L.tile * 0.20f, cfg.theme.hint);
+        if (b.charAt(to.rank, to.file) != '.') {
+            DrawCircleLines(cx, cy, L.tile * 0.22f, cfg.theme.hint);
         }
     }
 }
 
+// ----- coords -----
 void DrawCoords(const Config& cfg, const Layout& L) {
     for (int f = 0; f < 8; ++f) {
         std::string fileLabel(1, 'a' + f);
@@ -67,30 +66,25 @@ void DrawCoords(const Config& cfg, const Layout& L) {
     }
 }
 
-// ---- color utils ----
+// ----- color utils for sprites -----
 static inline unsigned char clampUC(int v){ return (unsigned char)std::max(0,std::min(255,v)); }
-
 Color Lighten(Color c, float a) {
-    // mix toward white
     int r = (int)(c.r + a * (255 - c.r));
     int g = (int)(c.g + a * (255 - c.g));
     int b = (int)(c.b + a * (255 - c.b));
     return Color{clampUC(r), clampUC(g), clampUC(b), c.a};
 }
-
 Color Darken(Color c, float a) {
-    // mix toward black
     int r = (int)(c.r * (1.0f - a));
     int g = (int)(c.g * (1.0f - a));
     int b = (int)(c.b * (1.0f - a));
     return Color{clampUC(r), clampUC(g), clampUC(b), c.a};
 }
 
-// ---- palette-aware sprite renderer ----
+// ----- sprite renderer -----
 void DrawSpriteIntoTilePal(const Sprite& s, int x, int y, int tile,
-                           Color base, Color outline, bool darkSquare)
+                           Color base, Color outline, bool /*darkSquare*/)
 {
-    // integer scaling for crisp pixels
     int px = tile / std::max(s.w, s.h);
     if (px < 1) px = 1;
 
@@ -99,39 +93,27 @@ void DrawSpriteIntoTilePal(const Sprite& s, int x, int y, int tile,
     int ox = x + (tile - spriteW) / 2;
     int oy = y + (tile - spriteH) / 2;
 
-    // precompute shades
     Color light = Lighten(base, 0.28f);
     Color dark  = Darken (base, 0.25f);
 
-    // first pass: explicit outline pixels 'o'
-    for (int r = 0; r < s.h; ++r) {
-        for (int c = 0; c < s.w; ++c) {
-            if (s.rows[r][c] == 'o') {
-                int rx = ox + c * px;
-                int ry = oy + r * px;
-                DrawRectangle(rx, ry, px, px, outline);
-            }
-        }
-    }
+    // outlines
+    for (int r = 0; r < s.h; ++r)
+        for (int c = 0; c < s.w; ++c)
+            if (s.rows[r][c] == 'o')
+                DrawRectangle(ox + c*px, oy + r*px, px, px, outline);
 
-    // second pass: fills/shades
+    // fills/shades
     for (int r = 0; r < s.h; ++r) {
         for (int c = 0; c < s.w; ++c) {
             char ch = s.rows[r][c];
             if (ch == '.' || ch == ' ' || ch == 'o') continue;
-
-            Color use = base;
-            if (ch == '+') use = light;
-            else if (ch == '-') use = dark;
-
-            int rx = ox + c * px;
-            int ry = oy + r * px;
-            DrawRectangle(rx, ry, px, px, use);
+            Color use = (ch == '+') ? light : (ch == '-') ? dark : base;
+            DrawRectangle(ox + c*px, oy + r*px, px, px, use);
         }
     }
 }
 
-// ---- draw pieces: call palette renderer ----
+// ----- pieces -----
 void DrawPieces(const Config& cfg, const Layout& L, const Board& b) {
     (void)cfg;
     for (int r = 0; r < 8; ++r) {
@@ -151,4 +133,29 @@ void DrawPieces(const Config& cfg, const Layout& L, const Board& b) {
             }
         }
     }
+}
+
+// ----- status bar -----
+void DrawStatus(const Config& cfg, const Layout& L, const Board& b) {
+    const std::string s = b.statusString();
+
+    const int boardW = 8 * L.tile;
+    const int barH   = std::max(22, L.tile / 2);
+    const int margin = 8;
+    const int x      = L.boardX;
+    const int y      = L.boardY + 8 * L.tile + margin;
+
+    Color bg = { 32, 160, 80, 160 };
+    if (s.find("Checkmate") != std::string::npos) bg = Color{200, 40, 40, 200};
+    else if (s.find("Stalemate") != std::string::npos) bg = Color{220, 180, 40, 200};
+
+    DrawRectangle(x, y, boardW, barH, bg);
+
+    const int fontSize = std::max(16, L.tile / 2);
+    int textW = MeasureText(s.c_str(), fontSize);
+    int tx = x + (boardW - textW) / 2;
+    int ty = y + (barH - fontSize) / 2;
+
+    DrawText(s.c_str(), tx+1, ty+1, fontSize, Color{0,0,0,140});
+    DrawText(s.c_str(), tx,   ty,   fontSize, RAYWHITE);
 }

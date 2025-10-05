@@ -12,6 +12,7 @@ void DrawBoard(const Config& cfg, const Layout& L);
 void DrawOverlays(const Config& cfg, const Layout& L, const Board& b);
 void DrawPieces(const Config& cfg, const Layout& L, const Board& b);
 void DrawCoords(const Config& cfg, const Layout& L);
+void DrawStatus(const Config& cfg, const Layout& L, const Board& b);
 
 // Color helpers
 Color Lighten(Color c, float a);

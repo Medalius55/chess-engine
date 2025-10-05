@@ -2,11 +2,11 @@
 #include "Board.h"
 #include <cctype>
 
-static inline bool inb(int f, int r) { return f >= 0 && f < 8 && r >= 0 && r < 8; }
+static inline bool inb(int f,int r){ return f>=0 && f<8 && r>=0 && r<8; }
 static inline bool sameSide(char a, char b) {
-    if (a == '.' || b == '.') return false;
+    if (a=='.' || b=='.') return false;
     return (std::isupper((unsigned char)a) && std::isupper((unsigned char)b)) ||
-            (std::islower((unsigned char)a) && std::islower((unsigned char)b));
+           (std::islower((unsigned char)a) && std::islower((unsigned char)b));
 }
 
 char Pawn::symbol() const   { return white_ ? 'P' : 'p'; }
@@ -32,9 +32,7 @@ std::vector<Move> Pawn::generateMoves(const Board& b, Square from) const {
         // double
         if (r == startRank) {
             int r2 = r + 2*dir;
-            if (inb(f,r2) && b.charAt(r2,f) == '.') {
-                out.push_back(Move{from, {f,r2}, 0});
-            }
+            if (inb(f,r2) && b.charAt(r2,f) == '.') out.push_back(Move{from,{f,r2},0});
         }
     }
     // captures
@@ -43,22 +41,19 @@ std::vector<Move> Pawn::generateMoves(const Board& b, Square from) const {
         if (!inb(nf,nr)) continue;
         char dst = b.charAt(nr,nf);
         if (dst!='.' && !sameSide(symbol(), dst)) {
-            Move m{from, {nf,nr}, 0};
-            if (nr == promoRank) m.promotion = white_ ? 'Q' : 'q';
+            Move m{from,{nf,nr},0};
+            if (nr==promoRank) m.promotion = white_ ? 'Q' : 'q';
             out.push_back(m);
         }
     }
-    return out;
-}
-
-std::vector<Move> Knight::generateMoves(const Board& b, Square from) const {
-    std::vector<Move> out;
-    static const int K[8][2]={{+1,+2},{+2,+1},{+2,-1},{+1,-2},{-1,-2},{-2,-1},{-2,+1},{-1,+2}};
-    for (auto &d:K){
-        int nf=from.file+d[0], nr=from.rank+d[1];
-        if (!inb(nf,nr)) continue;
-        char dst = b.charAt(nr,nf);
-        if (dst=='.' || !sameSide(symbol(), dst)) out.push_back(Move{from,{nf,nr},0});
+    // EN PASSANT
+    if (b.enPassantTarget) {
+        Square ep = *b.enPassantTarget;            // target square the moving pawn lands on
+        if (ep.rank == r + dir && (ep.file == f-1 || ep.file == f+1)) {
+            Move m{from, ep, 0};
+            m.isEnPassant = true;
+            out.push_back(m);
+        }
     }
     return out;
 }
@@ -67,44 +62,57 @@ static void slide(const Board& b, const Piece& pc, Square from, int df,int dr, s
     int f=from.file+df, r=from.rank+dr;
     while (inb(f,r)) {
         char dst = b.charAt(r,f);
-        if (dst=='.') { out.push_back(Move{from,{f,r},0}); }
+        if (dst=='.') out.push_back(Move{from,{f,r},0});
         else { if (!sameSide(pc.symbol(), dst)) out.push_back(Move{from,{f,r},0}); break; }
         f+=df; r+=dr;
     }
 }
 
-std::vector<Move> Bishop::generateMoves(const Board& b, Square from) const {
-    std::vector<Move> out;
-    slide(b,*this,from,+1,+1,out);
-    slide(b,*this,from,-1,+1,out);
-    slide(b,*this,from,+1,-1,out);
-    slide(b,*this,from,-1,-1,out);
-    return out;
-}
-std::vector<Move> Rook::generateMoves(const Board& b, Square from) const {
-    std::vector<Move> out;
-    slide(b,*this,from,+1,0,out);
-    slide(b,*this,from,-1,0,out);
-    slide(b,*this,from,0,+1,out);
-    slide(b,*this,from,0,-1,out);
-    return out;
-}
-std::vector<Move> Queen::generateMoves(const Board& b, Square from) const {
-    std::vector<Move> out;
-    slide(b,*this,from,+1,0,out);  slide(b,*this,from,-1,0,out);
-    slide(b,*this,from,0,+1,out);  slide(b,*this,from,0,-1,out);
+std::vector<Move> Bishop::generateMoves(const Board& b, Square from) const { std::vector<Move> out;
     slide(b,*this,from,+1,+1,out); slide(b,*this,from,-1,+1,out);
-    slide(b,*this,from,+1,-1,out); slide(b,*this,from,-1,-1,out);
-    return out;
-}
+    slide(b,*this,from,+1,-1,out); slide(b,*this,from,-1,-1,out); return out; }
+
+std::vector<Move> Rook::generateMoves(const Board& b, Square from) const { std::vector<Move> out;
+    slide(b,*this,from,+1,0,out); slide(b,*this,from,-1,0,out);
+    slide(b,*this,from,0,+1,out); slide(b,*this,from,0,-1,out); return out; }
+
+std::vector<Move> Queen::generateMoves(const Board& b, Square from) const { std::vector<Move> out;
+    slide(b,*this,from,+1,0,out); slide(b,*this,from,-1,0,out);
+    slide(b,*this,from,0,+1,out); slide(b,*this,from,0,-1,out);
+    slide(b,*this,from,+1,+1,out); slide(b,*this,from,-1,+1,out);
+    slide(b,*this,from,+1,-1,out); slide(b,*this,from,-1,-1,out); return out; }
+
+std::vector<Move> Knight::generateMoves(const Board& b, Square from) const { std::vector<Move> out;
+    static const int K[8][2]={{+1,+2},{+2,+1},{+2,-1},{+1,-2},{-1,-2},{-2,-1},{-2,+1},{-1,+2}};
+    for (auto &d:K){ int nf=from.file+d[0], nr=from.rank+d[1];
+        if (!inb(nf,nr)) continue; char dst=b.charAt(nr,nf);
+        if (dst=='.' || !sameSide(symbol(), dst)) out.push_back(Move{from,{nf,nr},0});
+    } return out; }
+
 std::vector<Move> King::generateMoves(const Board& b, Square from) const {
     std::vector<Move> out;
+    // normal 1-step moves
     for (int dr=-1; dr<=1; ++dr) for (int df=-1; df<=1; ++df){
-        if (!df && !dr) continue;
-        int nf=from.file+df, nr=from.rank+dr;
-        if (!inb(nf,nr)) continue;
-        char dst = b.charAt(nr,nf);
+        if (!df && !dr) continue; int nf=from.file+df, nr=from.rank+dr;
+        if (!inb(nf,nr)) continue; char dst=b.charAt(nr,nf);
         if (dst=='.' || !sameSide(symbol(), dst)) out.push_back(Move{from,{nf,nr},0});
+    }
+
+    // CASTLING (pseudo-legal: empties + rights; "through check" checked later)
+    bool white = isWhite();
+    int r = white ? 0 : 7;              // your board uses rank 0 for white back rank (since you load FEN top->bottom), adjust if different
+    // If your board uses white back rank = 0, keep this; if it's 7, flip.
+    // King side
+    if (white ? b.canCastleWK : b.canCastleBK) {
+        if (b.charAt(r,5)=='.' && b.charAt(r,6)=='.') {
+            Move m{from, {6,r}, 0}; m.isCastleKing = true; out.push_back(m);
+        }
+    }
+    // Queen side
+    if (white ? b.canCastleWQ : b.canCastleBQ) {
+        if (b.charAt(r,1)=='.' && b.charAt(r,2)=='.' && b.charAt(r,3)=='.') {
+            Move m{from, {2,r}, 0}; m.isCastleQueen = true; out.push_back(m);
+        }
     }
     return out;
 }
